@@ -1,13 +1,6 @@
 {
   "packages": [
     {
-      "name": "luci-app-OpenClash",
-      "repo": "https://github.com/vernesong/OpenClash.git",
-      "branch": "master",
-      "src": "luci-app-openclash",
-      "dest": "luci-app-OpenClash"
-    },
-    {
       "name": "luci-app-argon-config",
       "repo": "https://github.com/jerrykuku/luci-app-argon-config.git",
       "branch": "master",
@@ -34,13 +27,6 @@
       "branch": "main",
       "src": "luci-app-ddns-go",
       "dest": "luci-app-ddns-go"
-    },
-    {
-      "name": "luci-app-tailscale",
-      "repo": "https://github.com/asvow/luci-app-tailscale.git",
-      "branch": "main",
-      "src": ".",
-      "dest": "luci-app-tailscale"
     },
     {
       "name": "ddns-go",
