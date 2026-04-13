@@ -1,8 +1,8 @@
 diff --git a/packages/tailscale/Makefile b/packages/tailscale/Makefile
-index 9ff9783..04e8729 100644
+index c19ac69..93f4d4e 100644
 --- a/packages/tailscale/Makefile
 +++ b/packages/tailscale/Makefile
-@@ -60,22 +60,22 @@ endef
+@@ -60,24 +60,22 @@ endef
  
  define Package/tailscale/install
  	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/init.d $(1)/etc/config
@@ -28,10 +28,10 @@ index 9ff9783..04e8729 100644
  	echo "==> UPX disabled on ARCH $(ARCH)"
  endif
 -	# [Maintainer Note] Save a copy of the binary for the repository. 
--	# Feel free to remove the next two lines for local builds.
+-    # Feel free to remove the next two lines for local builds.
 -	# 可选：以下两行仅用于为本项目仓库保留一份二进制副本，自行使用时可删除
--	mkdir -p /builder/bin/packages/$(ARCH_PACKAGES)/base
--	$(CP) $(GO_PKG_BUILD_BIN_DIR)/tailscaled /builder/bin/packages/$(ARCH_PACKAGES)/base/tailscaled
+-	mkdir -p $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base
+-	$(CP) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base/tailscaled
 -
  	$(LN) tailscaled $(1)/usr/sbin/tailscale
  	$(INSTALL_BIN) ./files/tailscale.init $(1)/etc/init.d/tailscale
