@@ -43,11 +43,25 @@
       "dest": "tailscale"
     },
     {
-      "name": "luci-app-daed",
-      "repo": "https://github.com/QiuSimons/luci-app-daed.git",
-      "branch": "kix",
-      "src": "luci-app-daed",
-      "dest": "luci-app-daed"
+      "name": "dae",
+      "repo": "https://github.com/kenzok8/openwrt-daede.git",
+      "branch": "main",
+      "src": "dae",
+      "dest": "dae"
+    },
+    {
+      "name": "daed",
+      "repo": "https://github.com/kenzok8/openwrt-daede.git",
+      "branch": "main",
+      "src": "daed",
+      "dest": "daed"
+    },
+    {
+      "name": "luci-app-daede",
+      "repo": "https://github.com/kenzok8/openwrt-daede.git",
+      "branch": "main",
+      "src": "luci-app-daede",
+      "dest": "luci-app-daede"
     }
   ]
 }
