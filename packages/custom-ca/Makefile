@@ -17,7 +17,7 @@ define Package/custom-ca
 endef
 
 define Package/custom-ca/description
-  Install custom root CA certificate, OpenSSL hash symlink, and append it to OpenWrt CA bundle.
+  Install custom root CA certificate into OpenWrt trust store.
 endef
 
 define Build/Compile
@@ -38,8 +38,8 @@ ROOT="$${IPKG_INSTROOT:-$${APK_ROOT:-}}"
 CERT="$$ROOT/etc/ssl/certs/KamiStep_Root_CA.crt"
 BUNDLE="$$ROOT/etc/ssl/certs/ca-certificates.crt"
 
-MARK_BEGIN="# BEGIN CUSTOM CA"
-MARK_END="# END CUSTOM CA"
+MARK_BEGIN="# BEGIN CUSTOM CA: KamiStep_Root_CA"
+MARK_END="# END CUSTOM CA: KamiStep_Root_CA"
 
 mkdir -p "$$(dirname "$$BUNDLE")"
 
