@@ -41,6 +41,13 @@
       "branch": "main",
       "src": "package/tailscale",
       "dest": "tailscale"
+    },
+    {
+      "name": "luci-app-daed",
+      "repo": "https://github.com/QiuSimons/luci-app-daed.git",
+      "branch": "kix",
+      "src": "luci-app-daed",
+      "dest": "luci-app-daed"
     }
   ]
 }
