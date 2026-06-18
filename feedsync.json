@@ -62,6 +62,20 @@
       "branch": "main",
       "src": "luci-app-daede",
       "dest": "luci-app-daede"
+    },
+    {
+      "name": "luci-theme-kucat",
+      "repo": "https://github.com/sirpdboy/luci-theme-kucat.git",
+      "branch": "master",
+      "src": ".",
+      "dest": "luci-theme-kucat"
+    },
+    {
+      "name": "luci-app-kucat-config",
+      "repo": "https://github.com/sirpdboy/luci-app-kucat-config.git",
+      "branch": "master",
+      "src": ".",
+      "dest": "luci-app-kucat-config"
     }
   ]
 }
