@@ -55,12 +55,16 @@ const CSS = [
 	'.dd-geo-row{display:grid;grid-template-columns:96px 1fr;gap:10px;align-items:center;font-size:12px;padding:6px 0}',
 	'.dd-geo-row label{opacity:.75;font-weight:600}',
 	'.dd-geo-row input[type=text],.dd-geo-row select{font-size:12px;padding:4px 8px;border:1px solid rgba(128,128,128,.35);border-radius:5px;background:transparent;color:inherit;width:100%}',
-	'.dd-geo-chk{display:flex;align-items:center;gap:6px}',
+	/* selects cap at 200px on wide screens, shrink to the column on mobile (no overflow) */
+	'.dd-geo-row select{width:100%!important;max-width:200px;box-sizing:border-box}',
+	'.dd-geo-auto{display:inline-flex;align-items:center;gap:6px}',
+	/* Argon shifts label>checkbox down (top:.4rem); reset so flex centers it */
+	'.dd-geo-auto input[type="checkbox"]{position:static;top:auto;right:auto;margin:0}',
 	'.dd-geo-actions{margin-top:10px;display:flex;gap:10px;align-items:center}',
 	'.dd-up-log{margin-top:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;padding:10px;border:1px solid rgba(128,128,128,.14);border-radius:8px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-all;display:none;background:inherit;color:#4a8c63}',
 	'.dd-up-log.show{display:block}',
 		'body.dark .dd-up-log,html[data-theme="dark"] .dd-up-log,html[data-bs-theme="dark"] .dd-up-log{color:#a3d9ad}',
-	/* 手风琴折叠组 —— 与 config.js dd-adv 同构 */
+	/* accordion — same structure as config.js dd-adv */
 	'.dd-adv{margin-bottom:14px}',
 	'.dd-adv-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;cursor:pointer;user-select:none;font-size:11.5px;font-weight:600;background:rgba(128,128,128,.04);border:1px solid rgba(0,0,0,.06);border-radius:10px;color:inherit;letter-spacing:.3px;text-transform:uppercase;opacity:.7;box-shadow:0 2px 8px rgba(0,0,0,.03)}',
 	'.dd-adv-bar:hover{background:rgba(56,134,161,.06);opacity:.95}',
@@ -214,14 +218,29 @@ return view.extend({
 					logPane.classList.add('show');
 					return;
 				}
-				const bin = atob(res.stdout.trim());
+				let bin;
+				try {
+					bin = atob(res.stdout.trim());
+				} catch (e) {
+					logPane.textContent = _('Export failed: invalid base64 data from server');
+					logPane.classList.add('show');
+					return;
+				}
+				if (!bin || bin.length === 0) {
+					logPane.textContent = _('Export failed: empty archive');
+					logPane.classList.add('show');
+					return;
+				}
 				const arr = new Uint8Array(bin.length);
 				for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
 				const url = URL.createObjectURL(new Blob([arr], { 'type': 'application/gzip' }));
 				const a = E('a', { 'href': url, 'download': 'daede-config-' + stamp() + '.tar.gz' });
 				document.body.appendChild(a); a.click(); document.body.removeChild(a);
 				setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
-			}).catch(function() {}).finally(function() {
+			}).catch(function(e) {
+				logPane.textContent = _('Export failed') + ': ' + (e ? (e.message || String(e)) : _('script not found'));
+				logPane.classList.add('show');
+			}).finally(function() {
 				exportBtn.disabled = false; exportBtn.textContent = orig;
 			});
 		});
@@ -238,7 +257,10 @@ return view.extend({
 				const b64 = String(e.target.result).split(',')[1] || '';
 				fs.write('/tmp/daede-import.b64', b64).then(function() {
 					return runJob('config-backup.sh', 'import', importBtn, '/tmp/luci-app-daede.backup.log');
-				}).catch(function() {}).finally(function() { fileInput.value = ''; });
+				}).catch(function(e) {
+					logPane.textContent = _('Import failed') + ': ' + (e ? (e.message || String(e)) : _('unknown error'));
+					logPane.classList.add('show');
+				}).finally(function() { fileInput.value = ''; });
 			};
 			reader.readAsDataURL(file);
 		});
@@ -430,7 +452,13 @@ return view.extend({
 				uci.set('daede', 'config', 'geo_auto_freq', freqSel.value);
 				const orig = saveBtn.textContent;
 				saveBtn.disabled = true; saveBtn.textContent = '...';
-				uci.save().then(function() { return uci.apply(); }).then(function() {
+				uci.save().then(function() {
+					return uci.changes();
+				}).then(function(changes) {
+					// apply only when changed; empty changeset fails apply (#16)
+					if (changes && Object.keys(changes).length)
+						return uci.apply();
+				}).then(function() {
 					return fs.exec('/usr/share/luci-app-daede/geo-cron.sh', [autoCb.checked ? 'enable' : 'disable']);
 				}).then(function() {
 					logPane.textContent = _('Geo data source saved.');
@@ -453,8 +481,8 @@ return view.extend({
 					E('div', { 'class': 'dd-geo-row' }, [ E('label', {}, _('Source')), presetSel ]),
 					customRows,
 					E('div', { 'class': 'dd-geo-row' }, [
-						E('label', {}, _('Auto-update')),
-						E('div', { 'class': 'dd-geo-chk' }, [ autoCb, freqSel ])
+						E('label', { 'class': 'dd-geo-auto' }, [ E('span', {}, _('Auto-update')), autoCb ]),
+						freqSel
 					]),
 					E('div', { 'class': 'dd-geo-actions' }, [ saveBtn ])
 				])
