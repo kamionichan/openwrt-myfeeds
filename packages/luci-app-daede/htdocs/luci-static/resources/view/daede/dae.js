@@ -11,84 +11,63 @@
 /* dae 示例里的占位订阅特征 —— example.com、relative/path/to 或中文占位文本 */
 const RE_PLACEHOLDER_URL = /(['"])(?:(?:https?|https-file|file):\/\/[^'"]*?(?:example\.com|relative\/path\/to)[^'"]*|你的订阅链接或者机场链接)\1/;
 
-/* 常用块片段 —— 给文本模式用户一键插入官方推荐结构 */
-const SNIPPETS = {
-	subscription:
-		'\nsubscription {\n' +
-		'    # 把下面这行换成你的机场订阅链接\n' +
-		"    my_sub: '你的订阅链接或者机场链接'\n" +
-		'}\n',
-	node:
-		'\nnode {\n' +
-		'    # 单条节点链接（ss/vmess/trojan/vless 等 share link）\n' +
-		"    # 'ss://...'\n" +
-		'}\n',
-	group:
-		'\ngroup {\n' +
-		'    my_group {\n' +
-		'        # 节点选择策略：min_moving_avg / min / random / fixed(0)\n' +
-		'        policy: min_moving_avg\n' +
-		'    }\n' +
-		'}\n',
-	routing:
-		'\nrouting {\n' +
-		'    # 私网直连\n' +
-		'    dip(geoip:private) -> direct\n' +
-		'    # 国内直连\n' +
-		'    dip(geoip:cn) -> direct\n' +
-		'    domain(geosite:cn) -> direct\n' +
-		'    # 兜底：走代理组\n' +
-		'    fallback: my_group\n' +
-		'}\n',
-	dns:
-		'\ndns {\n' +
-		'    upstream {\n' +
-		"        alidns: 'udp://dns.alidns.com:53'\n" +
-		"        googledns: 'tcp+udp://dns.google:53'\n" +
-		'    }\n' +
-		'    routing {\n' +
-		'        request {\n' +
-		'            qname(geosite:cn) -> alidns\n' +
-		'            fallback: googledns\n' +
-		'        }\n' +
-		'    }\n' +
-		'}\n',
-	include:
-		'\ninclude {\n' +
-		'    # 相对路径：相对于 dae -c 指定的入口配置目录\n' +
-		'    config.d/*.dae\n' +
-		'}\n'
-};
-
-/* 把 example.dae 的 subscription 块瘦身成「只保留 1 行占位 + 中文引导注释」，
-   降低用户认知负担。其他块（global/node/group/routing/dns）原样保留。 */
-function simplifySubscriptionBlock(text) {
-	if (!text) return text;
-	const lines = text.split('\n');
-	let start = -1, end = -1, depth = 0;
-	for (let i = 0; i < lines.length; i++) {
-		if (start < 0) {
-			if (/^\s*subscription\s*\{/.test(lines[i])) {
-				start = i;
-				depth = 1;
-				continue;
-			}
-		} else {
-			depth += (lines[i].match(/\{/g) || []).length;
-			depth -= (lines[i].match(/\}/g) || []).length;
-			if (depth <= 0) { end = i; break; }
-		}
-	}
-	if (start < 0 || end < 0) return text;
-	/* 整块替换：保留原有 block 缩进风格（4 空格） */
-	const replacement = [
-		'subscription {',
-		'    # ⚠ 把下面这行的 URL 换成你机场的订阅链接，然后保存。',
-		"    my_sub: '你的订阅链接或者机场链接'",
-		'}'
-	];
-	return lines.slice(0, start).concat(replacement).concat(lines.slice(end + 1)).join('\n');
-}
+/* Minimal ready-to-run default: gen-dae-config.sh defaults + a placeholder subscription to swap. */
+const DEFAULT_TEMPLATE =
+	'# luci-app-daede 默认配置：把 subscription 里的占位链接换成你的机场订阅，保存即可运行。\n' +
+	'global {\n' +
+	'    tproxy_port: 12345\n' +
+	'    tproxy_port_protect: true\n' +
+	'    log_level: info\n' +
+	'    lan_interface: br-lan\n' +
+	'    wan_interface: auto\n' +
+	'    auto_config_kernel_parameter: true\n' +
+	'    dial_mode: domain\n' +
+	"    tcp_check_url: 'http://cp.cloudflare.com,1.1.1.1,2606:4700:4700::1111'\n" +
+	"    udp_check_dns: 'dns.google:53,8.8.8.8,2001:4860:4860::8888'\n" +
+	'    check_interval: 30s\n' +
+	'    check_tolerance: 50ms\n' +
+	'}\n' +
+	'\n' +
+	'subscription {\n' +
+	'    # ⚠ 把下面这行的 URL 换成你机场的订阅链接，然后保存。\n' +
+	"    my_airport: 'https://example.com/sub'\n" +
+	'}\n' +
+	'\n' +
+	'dns {\n' +
+	'    ipversion_prefer: 4\n' +
+	'    response_ttl: 0\n' +
+	'    upstream {\n' +
+	"        cndns: 'udp://dns.alidns.com:53'\n" +
+	"        fallbackdns: 'tcp+udp://dns.google:53'\n" +
+	'    }\n' +
+	'    routing {\n' +
+	'        request {\n' +
+	'            qname(geosite:cn) -> cndns\n' +
+	'            fallback: fallbackdns\n' +
+	'        }\n' +
+	'    }\n' +
+	'}\n' +
+	'\n' +
+	'group {\n' +
+	'    proxy {\n' +
+	'        filter: subtag(my_airport)\n' +
+	'        policy: min_moving_avg\n' +
+	'    }\n' +
+	'}\n' +
+	'\n' +
+	'routing {\n' +
+	'    pname(NetworkManager) -> direct\n' +
+	'    dip(224.0.0.0/3) -> direct\n' +
+	'    dip(255.255.255.255/32) -> direct\n' +
+	"    dip('ff00::/8') -> direct\n" +
+	'    dip(geoip:private) -> direct\n' +
+	'    l4proto(udp) && dport(123) -> direct\n' +
+	'    domain(connectivitycheck.gstatic.com) -> direct\n' +
+	'    domain(msftconnecttest.com) -> direct\n' +
+	'    dip(geoip:cn) -> direct\n' +
+	'    domain(geosite:cn) -> direct\n' +
+	'    fallback: proxy\n' +
+	'}\n';
 
 function detectPlaceholders(text) {
 	if (!text) return [];
@@ -167,6 +146,44 @@ function accordionizeSections(mapNode, openTitles) {
 	}
 }
 
+function organizeDaeSections(mapNode, openTitles) {
+	accordionizeSections(mapNode, openTitles);
+
+	const advTitles = [ _('Groups'), _('Routing'), _('DNS'), _('Logging') ];
+	const advWraps = [];
+	mapNode.querySelectorAll('.dd-adv').forEach(function(w) {
+		const t = w.querySelector('.dd-adv-bar span');
+		if (t && advTitles.indexOf(t.textContent.trim()) >= 0) advWraps.push(w);
+	});
+	if (!advWraps.length) return;
+
+	const outerOpen = (openTitles || []).indexOf(_('Advanced settings')) >= 0;
+	const outerBody = E('div', { 'class': 'dd-adv-body' });
+	const outer = E('div', { 'class': 'dd-adv' + (outerOpen ? '' : ' dd-closed') }, [
+		E('div', { 'class': 'dd-adv-bar' }, [
+			E('span', {}, _('Advanced settings')),
+			E('span', { 'class': 'dd-adv-chevron' }, '›')
+		]),
+		outerBody
+	]);
+	outer.firstChild.addEventListener('click', function() { outer.classList.toggle('dd-closed'); });
+	advWraps[0].parentNode.insertBefore(outer, advWraps[0]);
+	advWraps.forEach(function(w) { outerBody.appendChild(w); });
+}
+
+function captureAccordionState(mapNode) {
+	if (!mapNode) return [];
+	return Array.prototype.map.call(
+		mapNode.querySelectorAll('.dd-adv:not(.dd-closed) > .dd-adv-bar span:first-child'),
+		function(node) { return node.textContent.trim(); }
+	);
+}
+
+function restoreAccordionState(mapNode, openTitles) {
+	if (!mapNode || mapNode.querySelector('.dd-adv')) return;
+	organizeDaeSections(mapNode, openTitles || []);
+}
+
 /* Friendly form UI for the dae backend. Form is the source of truth: on save we
    commit the `dae` UCI package, then gen-dae-config.sh renders config.dae,
    validates it and hot-reloads. */
@@ -175,8 +192,7 @@ function renderDaeForms(ctx) {
 	m = new form.Map('dae', null, null);
 
 	/* Subscriptions */
-	s = m.section(form.GridSection, 'subscription', _('Subscriptions'),
-		_('Airport / subscription links. dae resolves them into the node pool.'));
+	s = m.section(form.GridSection, 'subscription', _('Subscriptions'), null);
 	s.addremove = true;
 	s.anonymous = true;
 	s.sortable = false;
@@ -287,9 +303,31 @@ function renderDaeForms(ctx) {
 		_('Resolves everything else.'));
 	o.default = 'tcp+udp://dns.google:53';
 	o.placeholder = 'tcp+udp://dns.google:53';
+	o = s.option(form.Value, 'response_ttl', _('DNS response TTL'),
+		_('TTL returned to LAN DNS clients. 0 keeps dae default behavior.'));
+	o.datatype = 'uinteger';
+	o.default = '0';
+	o.placeholder = '60';
 
 	/* Logging — folded into the main form so the single Save button covers it
 	   too (no separate native save bar) */
+		/* Network interfaces — override dae auto WAN detect, fails on legacy swconfig (#15).
+		   Combobox: dropdown of real devices but still free-text for undetectable WANs */
+		const netDevs = (ctx && ctx.netDevs) || [];
+		s = m.section(form.NamedSection, 'config', 'dae', _('Network interfaces'));
+		s.addremove = false;
+		o = s.option(form.Value, 'lan_interface', _('LAN interface'),
+			_('Interface to proxy the LAN from. Usually br-lan.'));
+		o.default = 'br-lan';
+		o.placeholder = 'br-lan';
+		netDevs.forEach(function(d) { o.value(d); });
+		o = s.option(form.Value, 'wan_interface', _('WAN interface'),
+			_('Uplink. auto = detect by default route; on legacy swconfig or multi-WAN set it, e.g. eth0.2.'));
+		o.default = 'auto';
+		o.placeholder = 'auto';
+		o.value('auto', 'auto');
+		netDevs.forEach(function(d) { o.value(d); });
+
 	s = m.section(form.NamedSection, 'config', 'dae', _('Logging'));
 	s.addremove = false;
 	o = s.option(form.Value, 'log_maxsize', _('Max Log Size (MB)'),
@@ -302,6 +340,7 @@ function renderDaeForms(ctx) {
 	o.default = '1';
 
 	const status = E('span', { 'class': 'dd-editor-status' }, '');
+	let renderSaveActions = function() {};
 	let statusTimer = null;
 	function flash(text, kind, hold) {
 		status.textContent = text;
@@ -316,6 +355,12 @@ function renderDaeForms(ctx) {
 	   - opts.start: after generate, enable + start dae (stopped → "Save and Start")
 	   - otherwise just save + generate; generate hot-reloads itself when dae runs */
 	function doSave(opts, btns) {
+		const settingsCard = status.closest('.dd-settings-card');
+		const openTitles = captureAccordionState(settingsCard && settingsCard.querySelector('.cbi-map'));
+		const restoreLiveAccordions = function() {
+			const liveCard = status.closest('.dd-settings-card');
+			restoreAccordionState(liveCard && liveCard.querySelector('.cbi-map'), openTitles);
+		};
 		btns.forEach(function(b) { b.disabled = true; });
 		flash(_('Saving…'));
 		/* ensure the singleton sections exist before parsing the form —
@@ -326,6 +371,7 @@ function renderDaeForms(ctx) {
 		if (!uci.get('dae', 'config'))  uci.add('dae', 'dae', 'config');
 		return m.save(null, true)
 			.then(function() {
+				restoreLiveAccordions();
 				/* assign unique tags to any rows the user left blank */
 				autofillTags('subscription', 'subscription');
 				autofillTags('node', 'node');
@@ -350,7 +396,6 @@ function renderDaeForms(ctx) {
 				if (!opts.start) {
 					/* generate already hot-reloaded if dae was running */
 					flash(opts.okMsg || _('Saved'), 'ok');
-					setTimeout(function() { window.location.reload(); }, 900);
 					return;
 				}
 				flash(_('Starting…'));
@@ -363,7 +408,7 @@ function renderDaeForms(ctx) {
 							flash(_('Start failed: %s').format(r2.stderr || r2.stdout || ('exit ' + r2.code)), 'err', 9000);
 						else {
 							flash(_('Saved · started'), 'ok');
-							setTimeout(function() { window.location.reload(); }, 900);
+							renderSaveActions(true);
 						}
 					});
 			})
@@ -375,41 +420,18 @@ function renderDaeForms(ctx) {
 				}
 				flash(_('Save failed: %s').format(e.message || e), 'err', 9000);
 			})
-			.finally(function() { btns.forEach(function(b) { b.disabled = false; }); });
+			.finally(function() {
+				restoreLiveAccordions();
+				btns.forEach(function(b) { b.disabled = false; });
+			});
 	}
 
 	return m.render().then(function(mapNode) {
 
 		/* beginner default: only Subscriptions starts open; nodes/groups/routing/dns/logging collapse */
-		accordionizeSections(mapNode, [ _('Subscriptions') ]);
+		organizeDaeSections(mapNode, [ _('Subscriptions') ]);
 
-		/* fold groups / routing / dns / logging under one "Advanced settings"
-		   collapsible so the everyday view is just subscriptions + nodes */
-		const advTitles = [ _('Groups'), _('Routing'), _('DNS'), _('Logging') ];
-		const advWraps = [];
-		mapNode.querySelectorAll('.dd-adv').forEach(function(w) {
-			const t = w.querySelector('.dd-adv-bar span');
-			if (t && advTitles.indexOf(t.textContent.trim()) >= 0) advWraps.push(w);
-		});
-		if (advWraps.length) {
-			const outerBody = E('div', { 'class': 'dd-adv-body' });
-			const outer = E('div', { 'class': 'dd-adv dd-closed' }, [
-				E('div', { 'class': 'dd-adv-bar' }, [
-					E('span', {}, _('Advanced settings')),
-					E('span', { 'class': 'dd-adv-chevron' }, '›')
-				]),
-				outerBody
-			]);
-			outer.firstChild.addEventListener('click', function() { outer.classList.toggle('dd-closed'); });
-			advWraps[0].parentNode.insertBefore(outer, advWraps[0]);
-			advWraps.forEach(function(w) { outerBody.appendChild(w); });
-		}
-
-		const cardChildren = [
-			E('h4', { 'class': 'dd-card-title' }, _('dae Configuration')),
-			E('div', { 'class': 'dd-settings-descr' },
-				_('Add a subscription or node, then save — it takes effect automatically.'))
-		];
+		const cardChildren = [ E('h4', { 'class': 'dd-card-title' }, _('dae Configuration')) ];
 		cardChildren.push(mapNode);
 
 		/* state-aware primary action: running → one "Save and Apply"; stopped →
@@ -458,23 +480,28 @@ function renderDaeForms(ctx) {
 				}
 			}
 
-			const actions = [];
-			let btns;
-			if (running) {
-				const apply = E('button', { 'class': 'cbi-button cbi-button-positive' }, _('Save and Apply'));
-				btns = [ apply ];
-				apply.addEventListener('click', function(ev) { ev.preventDefault(); doSave({ okMsg: _('Saved · applied') }, btns); });
-				actions.push(apply);
-			} else {
-				const saveOnly = E('button', { 'class': 'cbi-button' }, _('Save config'));
-				const saveStart = E('button', { 'class': 'cbi-button cbi-button-positive' }, _('Save and Start'));
-				btns = [ saveOnly, saveStart ];
-				saveOnly.addEventListener('click', function(ev) { ev.preventDefault(); doSave({ okMsg: _('Saved') }, btns); });
-				saveStart.addEventListener('click', function(ev) { ev.preventDefault(); doSave({ start: true }, btns); });
-				actions.push(saveOnly, saveStart);
-			}
-			actions.push(status);
-			cardChildren.push(E('div', { 'class': 'dd-editor-actions' }, actions));
+			const actionsWrap = E('div', { 'class': 'dd-editor-actions' });
+			renderSaveActions = function(isRunning) {
+				while (actionsWrap.firstChild) actionsWrap.removeChild(actionsWrap.firstChild);
+				let btns;
+				if (isRunning) {
+					const apply = E('button', { 'class': 'cbi-button cbi-button-positive' }, _('Save and Apply'));
+					btns = [ apply ];
+					apply.addEventListener('click', function(ev) { ev.preventDefault(); doSave({ okMsg: _('Saved · applied') }, btns); });
+					actionsWrap.appendChild(apply);
+				} else {
+					const saveOnly = E('button', { 'class': 'cbi-button' }, _('Save config'));
+					const saveStart = E('button', { 'class': 'cbi-button cbi-button-positive' }, _('Save and Start'));
+					btns = [ saveOnly, saveStart ];
+					saveOnly.addEventListener('click', function(ev) { ev.preventDefault(); doSave({ okMsg: _('Saved') }, btns); });
+					saveStart.addEventListener('click', function(ev) { ev.preventDefault(); doSave({ start: true }, btns); });
+					actionsWrap.appendChild(saveOnly);
+					actionsWrap.appendChild(saveStart);
+				}
+				actionsWrap.appendChild(status);
+			};
+			renderSaveActions(running);
+			cardChildren.push(actionsWrap);
 			return E('div', { 'class': 'dd-card dd-settings-card' }, cardChildren);
 		});
 	});
@@ -541,7 +568,7 @@ function renderDaeEditor() {
 	const textarea = E('textarea', {
 		'class': 'dd-editor dd-editor-hl',
 		'spellcheck': 'false',
-		'placeholder': _('dae config file is empty. Click "Initialize from example" to start, or paste your config here.')
+		'placeholder': _('dae config file is empty. Click "Load default config" to start, or paste your config here.')
 	}, '');
 	const hlCode = E('code', {});
 	const hlPre = E('pre', { 'class': 'dd-hl', 'aria-hidden': 'true' }, hlCode);
@@ -552,7 +579,7 @@ function renderDaeEditor() {
 	}
 	textarea.addEventListener('scroll', function() { hlPre.scrollTop = textarea.scrollTop; });
 	const save = E('button', { 'class': 'cbi-button cbi-button-positive' }, _('Save manual config'));
-	const init = E('button', { 'class': 'cbi-button cbi-button-action' }, _('Initialize from example'));
+	const init = E('button', { 'class': 'cbi-button cbi-button-action' }, _('Load default config'));
 	const status = E('span', { 'class': 'dd-editor-status' }, '');
 
 	const phWarn = E('div', { 'class': 'dd-ph-warn' }, [
@@ -562,39 +589,11 @@ function renderDaeEditor() {
 		E('ul', { 'class': 'dd-ph-list' })
 	]);
 
-	/* Insert Block 下拉：选完后自动复位到首项 */
-	const insertSelect = E('select', { 'class': 'dd-insert-select', 'title': _('Insert config block at cursor') }, [
-		E('option', { 'value': '' }, _('+ Insert Block…')),
-		E('option', { 'value': 'subscription' }, 'subscription'),
-		E('option', { 'value': 'node' }, 'node'),
-		E('option', { 'value': 'group' }, 'group'),
-		E('option', { 'value': 'routing' }, 'routing'),
-		E('option', { 'value': 'dns' }, 'dns'),
-		E('option', { 'value': 'include' }, 'include')
-	]);
-
 	/* Footer：dae version · 行数 · 占位剩余 */
 	const fbVer  = E('span', { 'class': 'dd-fb-item' }, [ E('span', { 'class': 'dd-fb-key' }, 'dae'), E('span', {}, '—') ]);
 	const fbLine = E('span', { 'class': 'dd-fb-item' }, [ E('span', { 'class': 'dd-fb-key' }, _('lines')), E('span', {}, '0') ]);
 	const fbStat = E('span', { 'class': 'dd-fb-item dd-fb-ok' }, '✓ ready');
 	const footer = E('div', { 'class': 'dd-editor-footer' }, [ fbVer, fbLine, fbStat ]);
-
-	function insertAtCursor(text) {
-		const start = textarea.selectionStart;
-		const end   = textarea.selectionEnd;
-		const v     = textarea.value;
-		textarea.value = v.slice(0, start) + text + v.slice(end);
-		const pos = start + text.length;
-		textarea.focus();
-		textarea.setSelectionRange(pos, pos);
-		refreshPlaceholders();
-	}
-
-	insertSelect.addEventListener('change', function() {
-		const key = insertSelect.value;
-		insertSelect.value = '';
-		if (key && SNIPPETS[key]) insertAtCursor(SNIPPETS[key]);
-	});
 
 	let statusTimer = null;
 	function flashStatus(text, kind, holdMs) {
@@ -719,16 +718,9 @@ function renderDaeEditor() {
 		ev.preventDefault();
 		if (textarea.value.trim() && !confirm(_('This will replace your current config. Continue?')))
 			return;
-		init.disabled = true;
-		flashStatus(_('Loading example…'));
-		fs.read_direct(backend.BACKENDS.dae.example, 'text')
-			.then(function(content) {
-				textarea.value = simplifySubscriptionBlock(content || '');
-				refreshPlaceholders();
-				flashStatus(_('Example loaded — save to apply'), 'ok');
-			})
-			.catch(function(e) { flashStatus(_('Init failed: %s').format(e.message || e), 'err'); })
-			.finally(function() { init.disabled = false; });
+		textarea.value = DEFAULT_TEMPLATE;
+		refreshPlaceholders();
+		flashStatus(_('Default config loaded — replace the subscription link, then save'), 'ok');
 	});
 
 	/* 一次性探测 dae --version；失败就显示 unknown，不影响主流程 */
@@ -744,8 +736,6 @@ function renderDaeEditor() {
 
 	return E('div', { 'class': 'dd-card' }, [
 		E('h4', { 'class': 'dd-card-title' }, _('Advanced / Manual Mode')),
-		E('div', { 'class': 'dd-settings-descr' },
-			_('Edit config.dae directly. Saving the form above regenerates the file and overwrites changes made here.')),
 		(function() {
 			var adv = E('div', { 'class': 'dd-adv dd-closed', style: 'margin-top:8px' }, [
 				E('div', { 'class': 'dd-adv-bar' }, [
@@ -756,12 +746,12 @@ function renderDaeEditor() {
 					E('div', { 'class': 'dd-editor-hint', style: 'margin:0 0 10px' }, [
 						E('b', {}, _('Text-only mode.')),
 						' ',
-						_('Edit config DSL — subscriptions, nodes, routing, DNS. Load template via Initialize. Replace placeholder URL before saving. Switch to daed for GUI.')
+						_('Edit the dae DSL directly. "Load default config" gives a ready-to-run starting point. Use daed for a GUI.')
 					]),
 					phWarn,
 					editWrap,
 					footer,
-					E('div', { 'class': 'dd-editor-actions' }, [ save, init, insertSelect, status ])
+					E('div', { 'class': 'dd-editor-actions' }, [ save, init, status ])
 				])
 			]);
 			adv.firstChild.addEventListener('click', function() { adv.classList.toggle('dd-closed'); });
