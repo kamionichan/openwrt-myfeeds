@@ -33,7 +33,6 @@ const BACKENDS = {
 		log: '/var/log/dae/dae.log',
 		pkg: 'dae',
 		config: '/etc/dae/config.dae',
-		example: '/etc/dae/example.dae',
 		hasWebUI: false,
 		useNetns: false
 	}
@@ -102,7 +101,8 @@ function setActiveBackend(name) {
 			return fs.write('/etc/config/daede', '');
 	}).then(function() { return fs.exec('/sbin/uci', ['set', 'daede.config=daede']); })
 		.then(function() { return fs.exec('/sbin/uci', ['set', 'daede.config.active_backend=' + name]); })
-		.then(function() { return fs.exec('/sbin/uci', ['commit', 'daede']); });
+		.then(function() { return fs.exec('/sbin/uci', ['commit', 'daede']); })
+		.then(function() { uci.set('daede', 'config', 'active_backend', name); });
 }
 
 function detectBackend() {

@@ -9,12 +9,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=tailscale
-PKG_VERSION:=1.100.0
+PKG_VERSION:=1.98.8
 PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/tailscale/tailscale/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=d9e097d82f08c8557c887ca71962b20f08e27f3b305902ea504bd0e472486b97
+PKG_HASH:=4dfd5e53b6ea0a7827bbe3e8d922b7b16fb91034effcdce243e61eacd183e41d
 
 PKG_MAINTAINER:=GuNan <gunanovo@gmail.com>
 PKG_LICENSE:=BSD-3-Clause
@@ -60,22 +60,28 @@ endef
 
 define Package/tailscale/install
 	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/init.d $(1)/etc/config
-	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(1)/usr/sbin/tailscaled
+	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(1)/usr/sbin
 
 ifneq ($(DISABLE_UPX),1)
-	@if command -v upx > /dev/null; then \
-		if ! upx -t $(1)/usr/sbin/tailscaled >/dev/null 2>&1; then \
+	if [ -f "$(TOPDIR)/upx/upx" ]; then \
+		if ! $(TOPDIR)/upx/upx -t $(GO_PKG_BUILD_BIN_DIR)/tailscaled >/dev/null 2>&1; then \
 			echo "==> UPX enabling on ARCH $(ARCH)"; \
-			upx --best --lzma $(1)/usr/sbin/tailscaled; \
+			$(TOPDIR)/upx/upx --best --lzma $(GO_PKG_BUILD_BIN_DIR)/tailscaled; \
 		else \
 			echo "==> UPX already compressed on ARCH $(ARCH)"; \
-		fi \
+		fi; \
 	else \
-		echo "==> [WARNING] upx command not found, skipping compression"; \
+		echo "==> UPX not found, skipping compression on ARCH $(ARCH)"; \
 	fi
 else
 	echo "==> UPX disabled on ARCH $(ARCH)"
 endif
+	# [Maintainer Note] Save a copy of the binary for the repository.
+    # Feel free to remove the next two lines for local builds.
+	# 可选：以下两行仅用于为本项目仓库保留一份二进制副本，自行使用时可删除
+	mkdir -p $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base
+	$(CP) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base/tailscaled
+
 	$(LN) tailscaled $(1)/usr/sbin/tailscale
 	$(INSTALL_BIN) ./files/tailscale.init $(1)/etc/init.d/tailscale
 	$(INSTALL_DATA) ./files/tailscale.conf $(1)/etc/config/tailscale
