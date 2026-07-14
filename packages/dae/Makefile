@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: GPL-2.0-only
+#
+# Copyright (C) 2023 ImmortalWrt.org
 
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=dae
-PKG_VERSION:=2026.06.14
+PKG_VERSION:=2026.07.08
 PKG_RELEASE:=1
 
-PKG_SOURCE:=dae-src-2026.06.14-fa89ea7197a5.tar.gz
+PKG_SOURCE:=dae-src-2026.07.08-ca25ef2aa396.tar.gz
 PKG_SOURCE_URL:=https://github.com/kenzok8/openwrt-daede/releases/download/dae-src
 PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)
-PKG_HASH:=5bbbd017bffdf04d0357a4e487c5d108b983c29b231fa752de17ddda00b2b462
+PKG_HASH:=69bbdc29d7356678901f2f4d3ac69f1b133e2d5a1793080bafbc3c4d610df38d
 
 PKG_LICENSE:=AGPL-3.0-only
 PKG_LICENSE_FILE:=LICENSE
@@ -128,6 +130,7 @@ define Package/dae/install
 
 	$(INSTALL_DIR) $(1)/etc/dae
 	$(INSTALL_CONF) $(PKG_BUILD_DIR)/example.dae $(1)/etc/dae/example.dae
+	$(SED) 's|^[[:space:]]*#lan_interface: docker0|    lan_interface: br-lan|' $(1)/etc/dae/example.dae
 
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) $(CURDIR)/files/dae.config $(1)/etc/config/dae

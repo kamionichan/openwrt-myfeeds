@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: GPL-2.0-only
+#
+# Copyright (C) 2023 ImmortalWrt.org
 
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=daed
-PKG_VERSION:=2026.06.14
+PKG_VERSION:=2026.07.08
 PKG_RELEASE:=1
 
-PKG_SOURCE:=daed-src-2026.06.14-4e215048068a.tar.gz
+PKG_SOURCE:=daed-src-2026.07.08-71b818ad193b.tar.gz
 PKG_SOURCE_URL:=https://github.com/kenzok8/openwrt-daede/releases/download/daed-src
 PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)
-PKG_HASH:=eeba8db775d248ce06f34adda7a392548c78a1d9d11d9a162e0ab41d5cc216d6
+PKG_HASH:=d8627ad2a45a1de99bd87946950800964141455d3059ef480a2f1337fd3e69b7
 
 PKG_LICENSE:=AGPL-3.0-only MIT
 PKG_LICENSE_FILES:=LICENSE wing/LICENSE
@@ -38,7 +40,7 @@ GO_PKG_LDFLAGS:= \
 GO_PKG_LDFLAGS_X:= \
 	$(GO_PKG)/db.AppName=$(PKG_NAME) \
 	$(GO_PKG)/db.AppVersion=$(PKG_VERSION)
-GO_PKG_TAGS:=embedallowed,trace
+GO_PKG_TAGS:=embedallowed,trace,timetzdata
 
 include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/bpf.mk
@@ -94,7 +96,8 @@ endef
 define Build/Prepare
 	mkdir -p $(DAED_BUILD_DIR)
 	$(TAR) --strip-components=1 -C $(DAED_BUILD_DIR) -xzf $(DL_DIR)/$(PKG_SOURCE)
-	$(if $(wildcard $(PATCH_DIR)/*.patch),$(call PatchDir,$(PKG_BUILD_DIR),$(PATCH_DIR),))
+	$(if $(wildcard $(CURDIR)/patches/*.patch),$(call PatchDir,$(PKG_BUILD_DIR),$(CURDIR)/patches,))
+	$(if $(filter arm,$(ARCH)),$(if $(wildcard $(CURDIR)/patches_arm/*.patch),$(call PatchDir,$(PKG_BUILD_DIR),$(CURDIR)/patches_arm,)))
 endef
 
 DAE_CFLAGS:= \
@@ -129,6 +132,10 @@ define Package/daed/install
 	$(call GoPackage/Package/Install/Bin,$(PKG_INSTALL_DIR))
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/dae-wing $(1)/usr/bin/daed
+	$(INSTALL_BIN) $(CURDIR)/files/daed-guard $(1)/usr/bin/daed-guard
+
+	$(INSTALL_DIR) $(1)/usr/share/daed
+	$(INSTALL_DATA) $(CURDIR)/files/daed-cleanup.sh $(1)/usr/share/daed/cleanup.sh
 
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) $(CURDIR)/files/daed.config $(1)/etc/config/daed

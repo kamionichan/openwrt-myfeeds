@@ -8,6 +8,7 @@
 'require view.daede.airport-sync as airportSync';
 'require view.daede.backend as backend';
 'require view.daede.clash-converter as clashConverter';
+'require view.daede.daed-session as daedSession';
 'require view.daede.styles as styles';
 
 const FETCHER = '/usr/share/luci-app-daede/fetch-clash-yaml.sh';
@@ -73,6 +74,10 @@ function loadYamlParser() {
 }
 
 function daedEndpoint() {
+	// HTTPS page: browser blocks the plain-HTTP :2023 fetch as mixed
+	// content, so relay via a same-origin CGI. HTTP: hit daed direct. #11
+	if (window.location.protocol === 'https:')
+		return '/cgi-bin/daede-graphql';
 	const listen = uci.get('daed', 'config', 'listen_addr') || '0.0.0.0:2023';
 	const match = String(listen).match(/:(\d+)$/);
 	const port = match ? match[1] : '2023';
@@ -100,19 +105,29 @@ function graphQL(endpoint, query, variables, token) {
 	});
 }
 
-function requestDaedCredentials() {
+function requestDaedCredentials(mode) {
+	const init = (mode === 'init');
 	return new Promise(function(resolve, reject) {
 		const username = E('input', { 'class': 'cbi-input-text', 'autocomplete': 'username', 'placeholder': _('Username') });
-		const password = E('input', { 'class': 'cbi-input-password', 'type': 'password', 'autocomplete': 'current-password', 'placeholder': _('Password') });
+		const password = E('input', { 'class': 'cbi-input-password', 'type': 'password', 'autocomplete': init ? 'new-password' : 'current-password', 'placeholder': _('Password') });
+		if (init) {
+			// prefill from the config-page account so the daed admin created here
+			// matches what cron subscription updates use.
+			username.value = uci.get('daed', 'config', 'dashboard_username') || '';
+			password.value = uci.get('daed', 'config', 'dashboard_password') || '';
+		}
 		const cancel = E('button', { 'class': 'btn cbi-button' }, _('Cancel'));
-		const login = E('button', { 'class': 'btn cbi-button cbi-button-positive' }, _('Sign in and import'));
+		const submit = E('button', { 'class': 'btn cbi-button cbi-button-positive' },
+			init ? _('Initialize and import') : _('Sign in and import'));
 
 		cancel.addEventListener('click', function() {
 			password.value = '';
 			ui.hideModal();
-			reject(new Error(_('Import cancelled')));
+			reject(new Error(init
+				? _('daed is not initialized yet. Open the daed web panel (port 2023) to create an admin account, then import again.')
+				: _('Import cancelled')));
 		});
-		login.addEventListener('click', function() {
+		submit.addEventListener('click', function() {
 			if (!username.value || !password.value)
 				return;
 			const result = { username: username.value, password: password.value };
@@ -121,13 +136,47 @@ function requestDaedCredentials() {
 			resolve(result);
 		});
 
-		ui.showModal(_('Sign in to daed'), [
-			E('p', {}, _('Credentials are used only for this import and are not saved.')),
+		const intro = init
+			? _('daed has not been initialized yet. The account below will be created as the daed admin (password needs at least 6 characters with both letters and numbers), then used to import.')
+			: _('The password is not saved. Sign-in is remembered in this browser for up to 30 days.');
+
+		ui.showModal(init ? _('Initialize daed') : _('Sign in to daed'), [ E('div', { 'class': 'dd-daed-login' }, [
+			E('p', {}, intro),
 			E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Username')), E('div', { 'class': 'cbi-value-field' }, username) ]),
 			E('div', { 'class': 'cbi-value' }, [ E('label', { 'class': 'cbi-value-title' }, _('Password')), E('div', { 'class': 'cbi-value-field' }, password) ]),
-			E('div', { 'class': 'right' }, [ cancel, ' ', login ])
-		]);
+			E('div', { 'class': 'right dd-daed-login-actions' }, [ cancel, ' ', submit ])
+		]) ]);
 		username.focus();
+	});
+}
+
+function requestDaedToken(endpoint, forceLogin) {
+	const cached = forceLogin ? '' : daedSession.load(window.localStorage);
+	if (cached)
+		return Promise.resolve({ token: cached, cached: true });
+
+	// numberUsers is unauthenticated; 0 means the daed panel was never
+	// initialized, so log-in can never succeed — bootstrap it with createUser.
+	return graphQL(endpoint, 'query Init{numberUsers}', {}).then(function(state) {
+		const needInit = !state || state.numberUsers === 0;
+		let credentials;
+		return requestDaedCredentials(needInit ? 'init' : 'login').then(function(value) {
+			credentials = value;
+			if (needInit)
+				return graphQL(endpoint,
+					'mutation Init($username:String!,$password:String!){createUser(username:$username,password:$password)}',
+					credentials).then(function(r) { return r.createUser; });
+			return graphQL(endpoint,
+				'query Login($username:String!,$password:String!){token(username:$username,password:$password)}',
+				credentials).then(function(r) { return r.token; });
+		}).then(function(token) {
+			daedSession.save(window.localStorage, token);
+			return { token: token, cached: false };
+		}).finally(function() {
+			if (credentials)
+				credentials.password = '';
+			credentials = null;
+		});
 	});
 }
 
@@ -223,6 +272,8 @@ return view.extend({
 		const targetSelect = E('select', { 'class': 'dd-conv-target' });
 		const airportName = E('input', { 'class': 'dd-conv-airport-name', 'placeholder': _('Group name'), 'autocomplete': 'off' });
 		const importButton = E('button', { 'class': 'cbi-button cbi-button-positive', 'disabled': 'disabled' }, _('Import node group'));
+		const importTitle = E('h4', { 'class': 'dd-card-title' });
+		const airportNameLabel = E('label');
 		const summary = E('div', { 'class': 'dd-conv-summary' });
 		const groupSummary = E('div', { 'class': 'dd-conv-group-summary' });
 		const sourceStatus = E('div', { 'class': 'dd-conv-status' }, '');
@@ -267,6 +318,62 @@ return view.extend({
 			});
 		};
 
+		const updateResultSummary = function() {
+			const isDaed = state.target === 'daed';
+			importTitle.textContent = isDaed ? _('3. Import Subscription') : _('3. Import Node Group');
+			airportNameLabel.textContent = isDaed ? _('Subscription name') : _('Group name');
+			const compatible = state.results.filter(function(item) { return item.ok; }).length;
+			const unsupported = state.results.length - compatible;
+			const duplicates = state.results.filter(function(item) { return item.duplicate; }).length;
+			while (summary.firstChild)
+				summary.removeChild(summary.firstChild);
+			[
+				[ _('Detected'), state.results.length + state.ignoredInfo ],
+				[ _('Compatible'), compatible ],
+				[ _('Duplicates'), duplicates ],
+				[ _('Incompatible'), unsupported ],
+				[ _('Ignored info'), state.ignoredInfo ]
+			].forEach(function(item) {
+				summary.appendChild(E('span', { 'class': 'dd-conv-summary-item' }, [
+					E('span', { 'class': 'dd-conv-summary-label' }, item[0]),
+					E('strong', {}, String(item[1]))
+				]));
+			});
+			const count = selectedResults().length;
+			const name = airportName.value.trim();
+			const existing = currentAirport();
+			const validName = airportSync.isGroupNameValid(name, state.target);
+			if (!name) {
+				groupSummary.textContent = isDaed
+					? _('Enter a subscription name to import the selected nodes.')
+					: _('Enter a group name to import the selected nodes.');
+				groupSummary.className = 'dd-conv-group-summary';
+			} else if (!validName) {
+				groupSummary.textContent = _('dae group names may only contain letters, numbers, underscores, and hyphens, and must start with a letter or underscore.');
+				groupSummary.className = 'dd-conv-group-summary err';
+			} else if (isDaed && existing && count === 0) {
+				groupSummary.textContent = _('Subscription "%s" is available on daed. Select nodes above to update it.').format(name);
+				groupSummary.className = 'dd-conv-group-summary';
+			} else if (isDaed) {
+				groupSummary.textContent = existing
+					? _('Update subscription "%s" with %d selected nodes in default group "proxy".').format(name, count)
+					: _('Import %d selected nodes as subscription "%s" into default group "proxy".').format(count, name);
+				groupSummary.className = 'dd-conv-group-summary';
+			} else if (existing && count === 0) {
+				groupSummary.textContent = _('Node group "%s" is available on %s. Select nodes above to update it.').format(name, state.target);
+				groupSummary.className = 'dd-conv-group-summary';
+			} else {
+				groupSummary.textContent = existing
+					? _('Update node group "%s": replace it with %d selected nodes on %s.').format(name, count, state.target)
+					: _('Import %d selected nodes into group "%s" on %s.').format(count, name, state.target);
+				groupSummary.className = 'dd-conv-group-summary';
+			}
+			importButton.textContent = isDaed
+				? (existing ? _('Update subscription (%d)').format(count) : _('Import subscription (%d)').format(count))
+				: (existing ? _('Update node group (%d)').format(count) : _('Import node group (%d)').format(count));
+			importButton.disabled = count === 0 || !validName;
+		};
+
 		const renderResults = function() {
 			while (resultBody.firstChild)
 				resultBody.removeChild(resultBody.firstChild);
@@ -282,7 +389,7 @@ return view.extend({
 				checkbox.disabled = !item.ok;
 				checkbox.addEventListener('change', function() {
 					item.selected = checkbox.checked;
-					renderResults();
+					updateResultSummary();
 				});
 
 				let resultText, resultClass;
@@ -309,46 +416,7 @@ return view.extend({
 			if (!shown.length)
 				resultBody.appendChild(E('div', { 'class': 'dd-conv-empty' }, _('No nodes to preview yet. Fetch or paste Clash YAML above.')));
 
-			const compatible = state.results.filter(function(item) { return item.ok; }).length;
-			const unsupported = state.results.length - compatible;
-			const duplicates = state.results.filter(function(item) { return item.duplicate; }).length;
-			while (summary.firstChild)
-				summary.removeChild(summary.firstChild);
-			[
-				[ _('Detected'), state.results.length + state.ignoredInfo ],
-				[ _('Compatible'), compatible ],
-				[ _('Duplicates'), duplicates ],
-				[ _('Incompatible'), unsupported ],
-				[ _('Ignored info'), state.ignoredInfo ]
-			].forEach(function(item) {
-				summary.appendChild(E('span', { 'class': 'dd-conv-summary-item' }, [
-					E('span', { 'class': 'dd-conv-summary-label' }, item[0]),
-					E('strong', {}, String(item[1]))
-				]));
-			});
-			const count = selectedResults().length;
-			const name = airportName.value.trim();
-			const existing = currentAirport();
-			const validName = airportSync.isGroupNameValid(name, state.target);
-			if (!name) {
-				groupSummary.textContent = _('Enter a group name to import the selected nodes.');
-				groupSummary.className = 'dd-conv-group-summary';
-			} else if (!validName) {
-				groupSummary.textContent = _('dae group names may only contain letters, numbers, underscores, and hyphens, and must start with a letter or underscore.');
-				groupSummary.className = 'dd-conv-group-summary err';
-			} else if (existing && count === 0) {
-				groupSummary.textContent = _('Node group "%s" is available on %s. Select nodes above to update it.').format(name, state.target);
-				groupSummary.className = 'dd-conv-group-summary';
-			} else {
-				groupSummary.textContent = existing
-					? _('Update node group "%s": replace it with %d selected nodes on %s.').format(name, count, state.target)
-					: _('Import %d selected nodes into group "%s" on %s.').format(count, name, state.target);
-				groupSummary.className = 'dd-conv-group-summary';
-			}
-			importButton.textContent = existing
-				? _('Update node group (%d)').format(count)
-				: _('Import node group (%d)').format(count);
-			importButton.disabled = count === 0 || !validName;
+			updateResultSummary();
 		};
 
 		const clearPreview = function() {
@@ -576,8 +644,8 @@ return view.extend({
 		};
 
 		const importDaed = function(items) {
-			let credentials;
 			let token = '';
+			let usedCachedToken = false;
 			const existingAirport = currentAirport();
 			const airportId = existingAirport ? existingAirport.id : airportSync.makeAirportId();
 			const name = airportName.value.trim();
@@ -594,24 +662,148 @@ return view.extend({
 			let before;
 			let newSubId = '';
 			let createdGroupId = '';
+			const createdNodeIds = [];
 			let groupReady = false;
 			const oldSubId = existingAirport ? existingAirport.subscription_id : '';
 			const oldNodeIds = existingAirport ? existingAirport.node_ids : [];
 
 			const dropStage = function() { return fs.exec('/bin/rm', [ '-f', stageFile ]).catch(function() {}); };
+			const loadState = function(forceLogin) {
+				return requestDaedToken(endpoint, forceLogin).then(function(auth) {
+					token = auth.token;
+					usedCachedToken = auth.cached;
+					return graphQL(endpoint, 'query State{nodes(first:10000){edges{id link tag}} groups{id name nodes{id}}}', {}, token);
+				});
+			};
+			const importDirectNodes = function() {
+				const existing = {};
+				const usedTags = {};
+				(((before || {}).nodes || {}).edges || []).forEach(function(node) {
+					existing[clashConverter.normalizeLink(node.link)] = node;
+					if (node.tag)
+						usedTags[String(node.tag)] = true;
+				});
+				const readableNodeTag = function(item, index) {
+					const base = String(item.name || '').replace(/[\x00-\x1f\x7f]+/g, ' ').replace(/\s+/g, ' ').trim()
+						|| _('Node %d').format(index + 1);
+					let tag = base.slice(0, 96);
+					let suffix = 2;
+					while (usedTags[tag]) {
+						const tail = ' ' + suffix++;
+						tag = base.slice(0, 96 - tail.length) + tail;
+					}
+					usedTags[tag] = true;
+					return tag;
+				};
+				const fresh = items.filter(function(item) {
+					const duplicate = existing[clashConverter.normalizeLink(item.link)];
+					if (duplicate)
+						item.duplicate = true;
+					return !duplicate;
+				});
+				const imported = fresh.length
+					? graphQL(endpoint,
+						'mutation ImportNodes($args:[ImportArgument!]!){importNodes(rollbackError:false,args:$args){link error node{id}}}',
+						{ args: fresh.map(function(item, index) { return { link: item.link, tag: readableNodeTag(item, index) }; }) }, token)
+					: Promise.resolve({ importNodes: [] });
+
+				return imported.then(function(result) {
+					const rows = result.importNodes || [];
+					const nodeIds = [];
+					const ownedIds = [];
+					const rowByLink = {};
+					rows.forEach(function(row) {
+						rowByLink[clashConverter.normalizeLink(row.link)] = row;
+					});
+					let failed = rows.filter(function(row) { return !!row.error && row.error !== 'node already exists'; }).length;
+					items.forEach(function(item) {
+						const key = clashConverter.normalizeLink(item.link);
+						const row = rowByLink[key];
+						const old = existing[key];
+						const id = row && row.node && row.node.id || old && old.id;
+						if (id)
+							nodeIds.push(id);
+						if (row && !row.error && row.node) {
+							ownedIds.push(row.node.id);
+							createdNodeIds.push(row.node.id);
+						}
+						else if (existingAirport && oldNodeIds.indexOf(id) >= 0)
+							ownedIds.push(id);
+					});
+					if (!nodeIds.length) {
+						const details = rows.filter(function(row) { return !!row.error; }).map(function(row) {
+							return row.error;
+						}).filter(function(error, index, errors) {
+							return errors.indexOf(error) === index;
+						}).join('; ');
+						throw new Error(details || _('No usable nodes were imported'));
+					}
+
+					const oldManagedGroup = airportSync.findManagedGroup(before.groups, existingAirport);
+					const ensureGroup = oldManagedGroup
+						? Promise.resolve(oldManagedGroup.id)
+						: graphQL(endpoint,
+							'mutation CreateGroup($name:String!,$policy:Policy!){createGroup(name:$name,policy:$policy){id}}',
+							{ name: groupName, policy: 'min_moving_avg' }, token).then(function(value) {
+								createdGroupId = value.createGroup.id;
+								return createdGroupId;
+							});
+					return ensureGroup.then(function(groupId) {
+						const rename = oldManagedGroup && oldManagedGroup.name !== groupName
+							? graphQL(endpoint, 'mutation RenameGroup($id:ID!,$name:String!){renameGroup(id:$id,name:$name)}', { id: groupId, name: groupName }, token)
+							: Promise.resolve();
+						return rename.then(function() {
+							return graphQL(endpoint, 'mutation SetPolicy($id:ID!,$policy:Policy!){groupSetPolicy(id:$id,policy:$policy)}', { id: groupId, policy: 'min_moving_avg' }, token);
+						}).then(function() {
+							return graphQL(endpoint, 'mutation AddNodes($id:ID!,$nodeIDs:[ID!]!){groupAddNodes(id:$id,nodeIDs:$nodeIDs)}', { id: groupId, nodeIDs: nodeIds }, token);
+						}).then(function() {
+							groupReady = true;
+							const oldMembers = oldManagedGroup ? oldManagedGroup.nodes.map(function(node) { return node.id; }) : [];
+							const removedMembers = oldMembers.filter(function(id) { return nodeIds.indexOf(id) < 0; });
+							return (removedMembers.length
+								? graphQL(endpoint, 'mutation DelNodes($id:ID!,$nodeIDs:[ID!]!){groupDelNodes(id:$id,nodeIDs:$nodeIDs)}', { id: groupId, nodeIDs: removedMembers }, token)
+								: Promise.resolve()).catch(function() {
+								failed++;
+							}).then(function() {
+								const otherAirportNodes = airportRecords().filter(function(record) {
+									return record.backend === 'daed' && (!existingAirport || record.id !== existingAirport.id);
+								}).map(function(record) { return record.node_ids; });
+								const otherGroupNodes = before.groups.filter(function(other) {
+									return other.id !== groupId;
+								}).map(function(other) { return other.nodes.map(function(node) { return node.id; }); });
+								const stale = airportSync.safeOldNodeIds(oldNodeIds, ownedIds, otherAirportNodes, otherGroupNodes);
+								return (stale.length
+									? graphQL(endpoint, 'mutation RemoveNodes($ids:[ID!]!){removeNodes(ids:$ids)}', { ids: stale }, token)
+									: Promise.resolve()).catch(function() {
+									failed++;
+								}).then(function() {
+									writeAirportRecord(existingAirport, {
+										id: airportId,
+										backend: 'daed',
+										name: name,
+										sourceHash: state.sourceHash,
+										groupId: groupId,
+										subscriptionId: '',
+										nodeIds: ownedIds
+									});
+									return applyUciChanges().then(function() {
+										items.forEach(function(item) { item.duplicate = true; item.selected = false; });
+										return { added: ownedIds.length, duplicates: items.length - ownedIds.length, failed: failed };
+									});
+								});
+							});
+						});
+					});
+				});
+			};
 
 			return fs.write(stageFile, b64).then(function() {
-				return requestDaedCredentials();
-			}).then(function(value) {
-				credentials = value;
-				return graphQL(endpoint,
-					'query Login($username:String!,$password:String!){token(username:$username,password:$password)}',
-					credentials);
-			}).then(function(login) {
-				token = login.token;
-				credentials.password = '';
-				credentials = null;
-				return graphQL(endpoint, 'query State{groups{id name nodes{id} subscriptions{subscription{id}}}}', {}, token);
+				return loadState(false).catch(function(error) {
+					if (!usedCachedToken || !daedSession.isAccessDenied(error))
+						throw error;
+					daedSession.clear(window.localStorage);
+					return loadState(true);
+				});
 			}).then(function(dataValue) {
 				before = dataValue;
 				// drop this airport's previous subscription first: the new one
@@ -623,56 +815,60 @@ return view.extend({
 				// import the whole converted batch as one subscription
 				return graphQL(endpoint,
 					'mutation Import($a:ImportArgument!){importSubscription(rollbackError:false,arg:$a){sub{id} nodeImportResult{error}}}',
-					{ a: { link: subUrl, tag: groupName } }, token);
+					{ a: { link: subUrl, tag: groupName } }, token).then(function(result) {
+						const sub = result.importSubscription && result.importSubscription.sub;
+						const rows = (result.importSubscription && result.importSubscription.nodeImportResult) || [];
+						const usable = rows.length
+							? rows.some(function(r) { return !r.error || r.error === 'node already exists'; })
+							: !!(sub && sub.id);
+						if (!sub || !sub.id || !usable) {
+							const details = rows.map(function(r) { return r.error; }).filter(Boolean).join('; ');
+							if (sub && sub.id)
+								newSubId = sub.id;
+							throw new Error(details || _('No usable nodes were imported'));
+						}
+						return result;
+					}).catch(function(error) {
+						if (daedSession.isAccessDenied(error))
+							throw error;
+						const cleanupSub = newSubId
+							? graphQL(endpoint, 'mutation Rm($ids:[ID!]!){removeSubscriptions(ids:$ids)}', { ids: [ newSubId ] }, token).catch(function() {})
+							: Promise.resolve();
+						newSubId = '';
+						return cleanupSub.then(importDirectNodes).then(function(result) {
+							return { directResult: result };
+						});
+					});
 			}).then(function(result) {
+				if (result.directResult)
+					return result.directResult;
+
 				const sub = result.importSubscription && result.importSubscription.sub;
-				if (!sub || !sub.id) {
-					const rows = (result.importSubscription && result.importSubscription.nodeImportResult) || [];
-					const details = rows.map(function(r) { return r.error; }).filter(Boolean).join('; ');
-					throw new Error(details || _('No usable nodes were imported'));
-				}
 				newSubId = sub.id;
 				const rows = result.importSubscription.nodeImportResult || [];
 				const failed = rows.filter(function(r) { return !!r.error && r.error !== 'node already exists'; }).length;
 
-				const oldGroup = airportSync.findManagedGroup(before.groups, existingAirport);
-				const ensureGroup = oldGroup
-					? Promise.resolve(oldGroup.id)
+				const oldManagedGroup = airportSync.findManagedGroup(before.groups, existingAirport);
+				const proxyGroup = airportSync.findGroupByName(before.groups, 'proxy');
+				const ensureGroup = proxyGroup
+					? Promise.resolve(proxyGroup.id)
 					: graphQL(endpoint,
 						'mutation CreateGroup($name:String!,$policy:Policy!){createGroup(name:$name,policy:$policy){id}}',
-						{ name: groupName, policy: 'min_moving_avg' }, token).then(function(value) {
+						{ name: 'proxy', policy: 'min_moving_avg' }, token).then(function(value) {
 							createdGroupId = value.createGroup.id;
 							return createdGroupId;
 						});
 				return ensureGroup.then(function(groupId) {
-					const rename = oldGroup && oldGroup.name !== groupName
-						? graphQL(endpoint, 'mutation Rename($id:ID!,$name:String!){renameGroup(id:$id,name:$name)}', { id: groupId, name: groupName }, token)
-						: Promise.resolve();
-					return rename.then(function() {
-						return graphQL(endpoint, 'mutation Pol($id:ID!,$policy:Policy!){groupSetPolicy(id:$id,policy:$policy)}', { id: groupId, policy: 'min_moving_avg' }, token);
-					}).then(function() {
-						// attach the whole subscription to the group
-						return graphQL(endpoint, 'mutation AddSubs($id:ID!,$ids:[ID!]!){groupAddSubscriptions(id:$id,subscriptionIDs:$ids)}', { id: groupId, ids: [ newSubId ] }, token);
-					}).then(function() {
+					return graphQL(endpoint, 'mutation AddSubs($id:ID!,$ids:[ID!]!){groupAddSubscriptions(id:$id,subscriptionIDs:$ids)}', { id: groupId, ids: [ newSubId ] }, token).then(function() {
 						groupReady = true;
-						// scrub the group of its previous members: old manual nodes
-						// (from the legacy importNodes flow) and any other subscription.
-						const oldMemberNodes = oldGroup ? (oldGroup.nodes || []).map(function(n) { return n.id; }) : [];
-						const oldGroupSubs = oldGroup
-							? (oldGroup.subscriptions || []).map(function(s) { return s.subscription && s.subscription.id; }).filter(function(id) { return id && id !== newSubId; })
-							: [];
-						const scrub = [];
-						if (oldMemberNodes.length)
-							scrub.push(graphQL(endpoint, 'mutation DelNodes($id:ID!,$nodeIDs:[ID!]!){groupDelNodes(id:$id,nodeIDs:$nodeIDs)}', { id: groupId, nodeIDs: oldMemberNodes }, token).catch(function() {}));
-						if (oldGroupSubs.length)
-							scrub.push(graphQL(endpoint, 'mutation DelSubs($id:ID!,$ids:[ID!]!){groupDelSubscriptions(id:$id,subscriptionIDs:$ids)}', { id: groupId, ids: oldGroupSubs }, token).catch(function() {}));
-						return Promise.all(scrub).then(function() {
-							// delete this airport's orphaned legacy manual nodes (the old
-							// subscription was already removed before the import).
-							if (!oldNodeIds.length)
-								return null;
-							return graphQL(endpoint, 'mutation Rm($ids:[ID!]!){removeNodes(ids:$ids)}', { ids: oldNodeIds }, token).catch(function() {});
-						}).then(function() {
+						const cleanup = [];
+						// Migrate converter-managed airport groups to proxy, but never
+						// disturb proxy's existing nodes or other subscriptions.
+						if (oldManagedGroup && oldManagedGroup.id !== groupId)
+							cleanup.push(graphQL(endpoint, 'mutation RmG($id:ID!){removeGroup(id:$id)}', { id: oldManagedGroup.id }, token).catch(function() {}));
+						if (oldNodeIds.length)
+							cleanup.push(graphQL(endpoint, 'mutation Rm($ids:[ID!]!){removeNodes(ids:$ids)}', { ids: oldNodeIds }, token).catch(function() {}));
+						return Promise.all(cleanup).then(function() {
 							writeAirportRecord(existingAirport, {
 								id: airportId,
 								backend: 'daed',
@@ -690,18 +886,19 @@ return view.extend({
 					});
 				});
 			}).catch(function(error) {
-				if (groupReady || !token || (!newSubId && !createdGroupId))
+				if (daedSession.isAccessDenied(error))
+					daedSession.clear(window.localStorage);
+				if (groupReady || !token || (!newSubId && !createdGroupId && !createdNodeIds.length))
 					throw error;
 				const cleanup = [];
 				if (newSubId)
 					cleanup.push(graphQL(endpoint, 'mutation Rm($ids:[ID!]!){removeSubscriptions(ids:$ids)}', { ids: [ newSubId ] }, token));
+				if (createdNodeIds.length)
+					cleanup.push(graphQL(endpoint, 'mutation Rm($ids:[ID!]!){removeNodes(ids:$ids)}', { ids: createdNodeIds }, token));
 				if (createdGroupId)
 					cleanup.push(graphQL(endpoint, 'mutation RmG($id:ID!){removeGroup(id:$id)}', { id: createdGroupId }, token));
 				return Promise.all(cleanup).catch(function() {}).then(function() { throw error; });
 			}).finally(function() {
-				if (credentials)
-					credentials.password = '';
-				credentials = null;
 				token = '';
 				return dropStage();
 			});
@@ -742,7 +939,7 @@ return view.extend({
 		return E('div', { 'class': 'dd-wrap dd-converter' }, [
 			E('style', {}, styles.CSS),
 			E('div', { 'class': 'dd-card dd-conv-card' }, [
-				E('p', { 'class': 'dd-settings-descr' }, _('Convert Clash YAML into share links, preview the result, then import selected nodes into dae or daed. Inputs and credentials are not saved.')),
+				E('p', { 'class': 'dd-settings-descr' }, _('Convert Clash YAML to share links and import the nodes you pick. Nothing is saved.')),
 				E('h4', { 'class': 'dd-card-title' }, _('1. Input Clash YAML')),
 				E('div', { 'class': 'dd-conv-url-row' }, [ urlInput, uaSelect, parseUrl ]),
 				E('div', { 'class': 'dd-conv-or' }, _('or')),
@@ -759,10 +956,9 @@ return view.extend({
 				resultBody
 			]),
 			E('div', { 'class': 'dd-card dd-conv-card' }, [
-				E('h4', { 'class': 'dd-card-title' }, _('3. Import Node Group')),
-				E('p', { 'class': 'dd-settings-descr' }, _('Import the selected nodes as one named group, so large airport node lists stay easy to manage.')),
+				importTitle,
 				E('div', { 'class': 'dd-conv-import dd-conv-airport' }, [
-					E('label', {}, _('Group name')),
+					airportNameLabel,
 					airportName,
 					E('label', {}, _('Target backend')),
 					targetSelect

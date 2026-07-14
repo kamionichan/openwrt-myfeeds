@@ -49,9 +49,6 @@ msgstr ""
 msgid "%s is not installed. Install it first, then switch backend."
 msgstr ""
 
-msgid "Switching backend stops the current service first. Click start when you want the new backend to run."
-msgstr ""
-
 msgid "Stopping current backend…"
 msgstr ""
 
@@ -82,19 +79,19 @@ msgstr ""
 msgid "Toggle failed: %s"
 msgstr ""
 
+msgid "Service did not start in time."
+msgstr ""
+
+msgid "Service did not stop in time."
+msgstr ""
+
 msgid "%s is already running. Stop %s before starting %s because both backends share the same eBPF/cgroup attachment."
 msgstr ""
 
 msgid "daede Settings"
 msgstr ""
 
-msgid "A modern dashboard for dae. Subscriptions, nodes, routing and DNS are managed in the daed WebUI."
-msgstr ""
-
 msgid "Listen Address"
-msgstr ""
-
-msgid "Host:port that the daed WebUI and GraphQL API listen on."
 msgstr ""
 
 msgid "Max Log Size (MB)"
@@ -107,6 +104,36 @@ msgid "Max Log Backups"
 msgstr ""
 
 msgid "Number of rotated log files to keep."
+msgstr ""
+
+msgid "daed Username"
+msgstr ""
+
+msgid "Used by LuCI to access daed (subscription updates and import). If daed is not initialized yet, this account is used to create the daed admin."
+msgstr ""
+
+msgid "daed Password"
+msgstr ""
+
+msgid "Enable subscription auto-update"
+msgstr ""
+
+msgid "Update Cycle"
+msgstr ""
+
+msgid "Update Time"
+msgstr ""
+
+msgid "Update subscriptions now"
+msgstr ""
+
+msgid "Updating daed subscriptions…"
+msgstr ""
+
+msgid "Subscriptions updated"
+msgstr ""
+
+msgid "Subscription update failed: %s"
 msgstr ""
 
 msgid "Log Advanced Settings"
@@ -532,7 +559,50 @@ msgid "Sign in to daed"
 msgstr ""
 
 #: converter.js
-msgid "Credentials are used only for this import and are not saved."
+msgid "The password is not saved. Sign-in is remembered in this browser for up to 30 days."
+msgstr ""
+
+#: converter.js
+msgid "Initialize daed"
+msgstr ""
+
+#: converter.js
+msgid "Initialize and import"
+msgstr ""
+
+#: converter.js
+msgid "daed has not been initialized yet. The account below will be created as the daed admin (password needs at least 6 characters with both letters and numbers), then used to import."
+msgstr ""
+
+#: converter.js
+msgid "daed is not initialized yet. Open the daed web panel (port 2023) to create an admin account, then import again."
+msgstr ""
+
+msgid "3. Import Subscription"
+msgstr ""
+
+msgid "Import selected nodes as one subscription and add it to the default proxy group."
+msgstr ""
+
+msgid "Subscription name"
+msgstr ""
+
+msgid "Enter a subscription name to import the selected nodes."
+msgstr ""
+
+msgid "Subscription \"%s\" is available on daed. Select nodes above to update it."
+msgstr ""
+
+msgid "Update subscription \"%s\" with %d selected nodes in default group \"proxy\"."
+msgstr ""
+
+msgid "Import %d selected nodes as subscription \"%s\" into default group \"proxy\"."
+msgstr ""
+
+msgid "Update subscription (%d)"
+msgstr ""
+
+msgid "Import subscription (%d)"
 msgstr ""
 
 #: converter.js
@@ -766,6 +836,9 @@ msgstr ""
 msgid "Auto-update"
 msgstr ""
 
+msgid "Disabled"
+msgstr ""
+
 msgid "Daily"
 msgstr ""
 
@@ -790,4 +863,10 @@ msgstr ""
 msgid ""
 "%s is running. Deleting the daens netns now will break its networking until "
 "you restart it. Continue?"
+msgstr ""
+
+msgid "DNS response TTL"
+msgstr ""
+
+msgid "TTL returned to LAN DNS clients. 0 keeps dae default behavior."
 msgstr ""

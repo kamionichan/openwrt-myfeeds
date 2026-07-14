@@ -31,6 +31,7 @@ function currentPreset(gi, gs) {
 
 const HEALTH_PATHS = {
 	btf: '/sys/kernel/btf/vmlinux',
+	btfDetached: '/usr/lib/debug/boot/vmlinux',
 	netns: '/run/netns/daens'
 };
 
@@ -55,12 +56,13 @@ const CSS = [
 	'.dd-geo-row{display:grid;grid-template-columns:96px 1fr;gap:10px;align-items:center;font-size:12px;padding:6px 0}',
 	'.dd-geo-row label{opacity:.75;font-weight:600}',
 	'.dd-geo-row input[type=text],.dd-geo-row select{font-size:12px;padding:4px 8px;border:1px solid rgba(128,128,128,.35);border-radius:5px;background:transparent;color:inherit;width:100%}',
-	'.dd-geo-chk{display:flex;align-items:center;gap:6px}',
+	/* selects cap at 200px on wide screens, shrink to the column on mobile (no overflow) */
+	'.dd-geo-row select{width:100%!important;max-width:200px;box-sizing:border-box}',
 	'.dd-geo-actions{margin-top:10px;display:flex;gap:10px;align-items:center}',
 	'.dd-up-log{margin-top:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;padding:10px;border:1px solid rgba(128,128,128,.14);border-radius:8px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-all;display:none;background:inherit;color:#4a8c63}',
 	'.dd-up-log.show{display:block}',
 		'body.dark .dd-up-log,html[data-theme="dark"] .dd-up-log,html[data-bs-theme="dark"] .dd-up-log{color:#a3d9ad}',
-	/* 手风琴折叠组 —— 与 config.js dd-adv 同构 */
+	/* accordion — same structure as config.js dd-adv */
 	'.dd-adv{margin-bottom:14px}',
 	'.dd-adv-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;cursor:pointer;user-select:none;font-size:11.5px;font-weight:600;background:rgba(128,128,128,.04);border:1px solid rgba(0,0,0,.06);border-radius:10px;color:inherit;letter-spacing:.3px;text-transform:uppercase;opacity:.7;box-shadow:0 2px 8px rgba(0,0,0,.03)}',
 	'.dd-adv-bar:hover{background:rgba(56,134,161,.06);opacity:.95}',
@@ -214,14 +216,29 @@ return view.extend({
 					logPane.classList.add('show');
 					return;
 				}
-				const bin = atob(res.stdout.trim());
+				let bin;
+				try {
+					bin = atob(res.stdout.trim());
+				} catch (e) {
+					logPane.textContent = _('Export failed: invalid base64 data from server');
+					logPane.classList.add('show');
+					return;
+				}
+				if (!bin || bin.length === 0) {
+					logPane.textContent = _('Export failed: empty archive');
+					logPane.classList.add('show');
+					return;
+				}
 				const arr = new Uint8Array(bin.length);
 				for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
 				const url = URL.createObjectURL(new Blob([arr], { 'type': 'application/gzip' }));
 				const a = E('a', { 'href': url, 'download': 'daede-config-' + stamp() + '.tar.gz' });
 				document.body.appendChild(a); a.click(); document.body.removeChild(a);
 				setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
-			}).catch(function() {}).finally(function() {
+			}).catch(function(e) {
+				logPane.textContent = _('Export failed') + ': ' + (e ? (e.message || String(e)) : _('script not found'));
+				logPane.classList.add('show');
+			}).finally(function() {
 				exportBtn.disabled = false; exportBtn.textContent = orig;
 			});
 		});
@@ -238,7 +255,10 @@ return view.extend({
 				const b64 = String(e.target.result).split(',')[1] || '';
 				fs.write('/tmp/daede-import.b64', b64).then(function() {
 					return runJob('config-backup.sh', 'import', importBtn, '/tmp/luci-app-daede.backup.log');
-				}).catch(function() {}).finally(function() { fileInput.value = ''; });
+				}).catch(function(e) {
+					logPane.textContent = _('Import failed') + ': ' + (e ? (e.message || String(e)) : _('unknown error'));
+					logPane.classList.add('show');
+				}).finally(function() { fileInput.value = ''; });
 			};
 			reader.readAsDataURL(file);
 		});
@@ -248,6 +268,7 @@ return view.extend({
 				probeFile(DATA_PATHS.geoip),
 				probeFile(DATA_PATHS.geosite),
 				probeFile(HEALTH_PATHS.btf),
+				probeFile(HEALTH_PATHS.btfDetached),
 				backend.detectRunning(),
 				backend.serviceStatus(ctx.name)
 			];
@@ -261,8 +282,8 @@ return view.extend({
 				probes.push(probeFile(HEALTH_PATHS.netns));
 
 			return Promise.all(probes).then(function(r) {
-				const geoip = r[0], geosite = r[1], btf = r[2], running = r[3], service = r[4];
-				const pkgOffset = 5;
+				const geoip = r[0], geosite = r[1], btf = r[2], btfDetached = r[3], running = r[4], service = r[5];
+				const pkgOffset = 6;
 				const coreInfo = {};
 				corePkgs.forEach(function(pkg, i) {
 					coreInfo[pkg] = r[pkgOffset + i];
@@ -342,6 +363,8 @@ return view.extend({
 
 				if (btf.exists)
 					healthBody.appendChild(mkRow('✓', 'dd-up-ok', _('Kernel BTF'), HEALTH_PATHS.btf + ' · ' + fmtBytes(btf.size)));
+				else if (btfDetached.exists)
+					healthBody.appendChild(mkRow('✓', 'dd-up-ok', _('Kernel BTF'), HEALTH_PATHS.btfDetached + ' · ' + fmtBytes(btfDetached.size)));
 				else
 					healthBody.appendChild(mkRow('✗', 'dd-up-err', _('Kernel BTF'), _('not available — eBPF needs CONFIG_DEBUG_INFO_BTF or vmlinux-btf')));
 
@@ -410,28 +433,35 @@ return view.extend({
 			presetSel.addEventListener('change', syncCustom);
 			syncCustom();
 
-			const autoCb = E('input', { 'type': 'checkbox' });
-			autoCb.checked = auto0;
-			const freqSel = E('select', {}, [
+			const autoSel = E('select', {}, [
+				E('option', { 'value': 'off' }, _('Disabled')),
 				E('option', { 'value': 'daily' }, _('Daily')),
 				E('option', { 'value': 'weekly' }, _('Weekly'))
 			]);
-			freqSel.value = freq0;
+			autoSel.value = auto0 ? freq0 : 'off';
 
 			const saveBtn = E('button', { 'class': 'dd-up-btn dd-up-btn-primary' }, _('Save'));
 			saveBtn.addEventListener('click', function() {
 				const p = presetSel.value;
 				let gi = '', gs = '';
+				const geoAuto = autoSel.value !== 'off';
+				const geoFreq = autoSel.value === 'weekly' ? 'weekly' : 'daily';
 				if (p === 'v2fly') { gi = GEO_PRESETS.v2fly.geoip; gs = GEO_PRESETS.v2fly.geosite; }
 				else if (p === 'custom') { gi = giInput.value.trim(); gs = gsInput.value.trim(); }
 				uci.set('daede', 'config', 'geoip_url', gi);
 				uci.set('daede', 'config', 'geosite_url', gs);
-				uci.set('daede', 'config', 'geo_auto', autoCb.checked ? '1' : '0');
-				uci.set('daede', 'config', 'geo_auto_freq', freqSel.value);
+				uci.set('daede', 'config', 'geo_auto', geoAuto ? '1' : '0');
+				uci.set('daede', 'config', 'geo_auto_freq', geoFreq);
 				const orig = saveBtn.textContent;
 				saveBtn.disabled = true; saveBtn.textContent = '...';
-				uci.save().then(function() { return uci.apply(); }).then(function() {
-					return fs.exec('/usr/share/luci-app-daede/geo-cron.sh', [autoCb.checked ? 'enable' : 'disable']);
+				uci.save().then(function() {
+					return uci.changes();
+				}).then(function(changes) {
+					// apply only when changed; empty changeset fails apply (#16)
+					if (changes && Object.keys(changes).length)
+						return uci.apply();
+				}).then(function() {
+					return fs.exec('/usr/share/luci-app-daede/geo-cron.sh', [geoAuto ? 'enable' : 'disable']);
 				}).then(function() {
 					logPane.textContent = _('Geo data source saved.');
 					logPane.classList.add('show');
@@ -454,7 +484,7 @@ return view.extend({
 					customRows,
 					E('div', { 'class': 'dd-geo-row' }, [
 						E('label', {}, _('Auto-update')),
-						E('div', { 'class': 'dd-geo-chk' }, [ autoCb, freqSel ])
+						autoSel
 					]),
 					E('div', { 'class': 'dd-geo-actions' }, [ saveBtn ])
 				])
