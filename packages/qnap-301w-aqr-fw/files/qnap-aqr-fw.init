@@ -1,0 +1,78 @@
+#!/bin/sh /etc/rc.common
+
+START=18
+
+FW_DIR=/lib/firmware/marvell
+FW0=AQR-G4_v5.4.C-AQR_CIG_WF-1945_0x0_ID44778_VER1630.cld
+FW8=AQR-G4_v5.4.C-AQR_CIG_WF-1945_0x8_ID44776_VER1630.cld
+NETDEV=10g-1
+TAG=qnap-aqr-fw
+
+log() {
+	logger -t "$TAG" -- "$*"
+	echo "$TAG: $*"
+}
+
+firmware_matches() {
+	local phy="$1" id="$2" provisioning="$3" output
+	output="$(qnap-aqr-mdio fw-id "$NETDEV" "$phy" 2>/dev/null)" || return 1
+	echo "$output" | grep -qx 'FW_ID=0x0504 version=5.4' || return 1
+	echo "$output" | grep -qx "RSVD_STAT1=0x[0-9a-fA-F]\{4\} build=12 provisioning=$provisioning" || return 1
+	echo "$output" | grep -qx "MISC_ID=0x[0-9a-fA-F]\{4\} decimal=$id" || return 1
+	echo "$output" | grep -qx 'MISC_VER=0x[0-9a-fA-F]\{4\} decimal=1630' || return 1
+}
+
+wait_for_mdio() {
+	local n=0
+	while [ "$n" -lt 30 ]; do
+		[ -e "/sys/class/net/$NETDEV" ] && qnap-aqr-mdio fw-id "$NETDEV" 0 >/dev/null 2>&1 && return 0
+		n=$((n + 1))
+		sleep 1
+	done
+	return 1
+}
+
+load_phy() {
+	local phy="$1" fw="$2" id="$3" provisioning="$4" output n
+
+	if firmware_matches "$phy" "$id" "$provisioning"; then
+		log "PHY 0x$(printf '%02x' "$phy") already runs QNAP 5.4.C ID$id"
+		return 0
+	fi
+
+	log "loading $fw into PHY 0x$(printf '%02x' "$phy")"
+	aq-fw-download "$FW_DIR/$fw" "$NETDEV" "$phy" || return 1
+	qnap-aqr-mdio write "$NETDEV" "$phy" 4 0xc441 0x0008 || return 1
+	n=0
+	while [ "$n" -lt 30 ]; do
+		output="$(qnap-aqr-mdio fw-id "$NETDEV" "$phy" 2>/dev/null)" && \
+			echo "$output" | grep -qx 'FW_ID=0x0504 version=5.4' && break
+		n=$((n + 1))
+		sleep 1
+	done
+	[ "$n" -lt 30 ] || return 1
+	echo "$output"
+	echo "$output" | grep -qx 'FW_ID=0x0504 version=5.4' || return 1
+	echo "$output" | grep -qx "RSVD_STAT1=0x[0-9a-fA-F]\{4\} build=12 provisioning=$provisioning" || return 1
+	echo "$output" | grep -qx "MISC_ID=0x[0-9a-fA-F]\{4\} decimal=$id" || return 1
+	echo "$output" | grep -qx 'MISC_VER=0x[0-9a-fA-F]\{4\} decimal=1630' || return 1
+	log "PHY 0x$(printf '%02x' "$phy") now runs QNAP 5.4.C ID$id"
+}
+
+start() {
+	[ "$(board_name)" = "qnap,301w" ] || return 0
+
+	if ! wait_for_mdio; then
+		log "MDIO netdev $NETDEV did not become ready"
+		return 1
+	fi
+
+	load_phy 0 "$FW0" 44778 1 || {
+		log "failed to load PHY 0x00"
+		return 1
+	}
+	load_phy 8 "$FW8" 44776 2 || {
+		log "failed to load PHY 0x08"
+		return 1
+	}
+}
