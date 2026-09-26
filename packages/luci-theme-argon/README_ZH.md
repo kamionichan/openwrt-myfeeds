@@ -67,6 +67,15 @@ Argon 是**一款干净整洁的 OpenWrt LuCI 主题**，
 - 登录页支持本地图片、视频和在线壁纸背景。
 - 可搭配 [luci-app-argon-config][config-link] 实现更完整的主题设置体验。
 
+Unsplash 在线壁纸需要 Unsplash API Access Key。当前 `luci-app-argon-config` 界面尚未提供此设置；选择 Unsplash 后，可通过 UCI 配置：
+
+```sh
+uci set 'argon.@global[0].use_api_key=你的_UNSPLASH_ACCESS_KEY'
+uci commit argon
+```
+
+未配置密钥时，登录页会使用本地背景。Bing 和 Wallhaven 壁纸选项不受影响。
+
 ## 兼容性
 
 目前仅维护 `master` 分支。  
@@ -74,7 +83,7 @@ Argon 是**一款干净整洁的 OpenWrt LuCI 主题**，
 
 ## 版本历史
 
-当前最新的版本为 v2.4.6 [点击这里][zh-cn-release-log]查看完整的版本历史日志.
+当前最新的版本为 v2.4.7 [点击这里][zh-cn-release-log]查看完整的版本历史日志.
 
 ## 快速开始
 
@@ -90,17 +99,17 @@ make -j1 V=s
 ### 安装 release 包 (`ipk`)
 
 ```bash
-wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.6/luci-theme-argon_2.4.6-1_all.ipk
-wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.6/luci-app-argon-config_2.4.6-1_all.ipk
-opkg install ./luci-theme-argon_2.4.6-1_all.ipk ./luci-app-argon-config_2.4.6-1_all.ipk
+wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.7/luci-theme-argon_2.4.7-1_all.ipk
+wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.7/luci-app-argon-config_2.4.7-1_all.ipk
+opkg install ./luci-theme-argon_2.4.7-1_all.ipk ./luci-app-argon-config_2.4.7-1_all.ipk
 ```
 
 ### 安装 release 包 (`apk`)
 
 ```bash
-wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.6/luci-theme-argon-2.4.6-r1.apk
-wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.6/luci-app-argon-config-2.4.6-r1.apk
-apk add --allow-untrusted ./luci-theme-argon-2.4.6-r1.apk ./luci-app-argon-config-2.4.6-r1.apk
+wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.7/luci-theme-argon-2.4.7-r1.apk
+wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.7/luci-app-argon-config-2.4.7-r1.apk
+apk add --allow-untrusted ./luci-theme-argon-2.4.7-r1.apk ./luci-app-argon-config-2.4.7-r1.apk
 ```
 
 
