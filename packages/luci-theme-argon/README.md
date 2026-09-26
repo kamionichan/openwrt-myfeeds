@@ -67,6 +67,15 @@ It also supports automatic and manual switching between light and dark modes.
 - The login page supports local images, videos, and online wallpapers as backgrounds.
 - Works with [luci-app-argon-config][config-link] for a more complete theme configuration experience.
 
+Unsplash wallpapers require an Unsplash API access key. The current `luci-app-argon-config` UI does not expose this setting; after choosing Unsplash, set it through UCI:
+
+```sh
+uci set 'argon.@global[0].use_api_key=YOUR_UNSPLASH_ACCESS_KEY'
+uci commit argon
+```
+
+Without a key, the login page uses a local background. Bing and Wallhaven wallpaper options are unaffected.
+
 ## Compatibility
 
 Only the `master` branch is maintained now.  
@@ -74,7 +83,7 @@ Support is focused on modern LuCI environments based on [Official OpenWrt][offic
 
 ## Version History
 
-The latest version is v2.4.6 [Click here][en-us-release-log] to view the full version history record.
+The latest version is v2.4.7 [Click here][en-us-release-log] to view the full version history record.
 
 ## Getting started
 
@@ -90,17 +99,17 @@ make -j1 V=s
 ### Install release packages (`ipk`)
 
 ```bash
-wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.6/luci-theme-argon_2.4.6-1_all.ipk
-wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.6/luci-app-argon-config_2.4.6-1_all.ipk
-opkg install ./luci-theme-argon_2.4.6-1_all.ipk ./luci-app-argon-config_2.4.6-1_all.ipk
+wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.7/luci-theme-argon_2.4.7-1_all.ipk
+wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.7/luci-app-argon-config_2.4.7-1_all.ipk
+opkg install ./luci-theme-argon_2.4.7-1_all.ipk ./luci-app-argon-config_2.4.7-1_all.ipk
 ```
 
 ### Install release packages (`apk`)
 
 ```bash
-wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.6/luci-theme-argon-2.4.6-r1.apk
-wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.6/luci-app-argon-config-2.4.6-r1.apk
-apk add --allow-untrusted ./luci-theme-argon-2.4.6-r1.apk ./luci-app-argon-config-2.4.6-r1.apk
+wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.7/luci-theme-argon-2.4.7-r1.apk
+wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.7/luci-app-argon-config-2.4.7-r1.apk
+apk add --allow-untrusted ./luci-theme-argon-2.4.7-r1.apk ./luci-app-argon-config-2.4.7-r1.apk
 ```
 
 
