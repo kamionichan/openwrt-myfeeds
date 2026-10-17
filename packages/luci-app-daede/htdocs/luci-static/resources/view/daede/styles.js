@@ -4,6 +4,9 @@
 'require baseclass';
 
 const CSS = [
+	'.dd-log-toolbar .dd-log-toggle[aria-pressed="true"]{background:rgba(74,160,101,.16);border-color:#4aa065;box-shadow:inset 0 0 0 1px rgba(74,160,101,.2)}',
+	'.dd-log-toolbar .dd-log-toggle:focus-visible{outline:2px solid #4aa065;outline-offset:2px}',
+
 	'.dd-wrap{padding:4px 0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif}',
 	'.dd-card{border:1px solid rgba(0,0,0,.06);border-radius:10px;padding:9px 14px;margin-bottom:7px;box-shadow:0 2px 8px rgba(0,0,0,.03);background:rgba(255,255,255,.02)}',
 	/* padding:0 neutralizes Argon's h4{padding:.75rem 1.25rem}, which otherwise
@@ -26,7 +29,13 @@ const CSS = [
 	'.dd-wrap .cbi-button-action,.dd-wrap .cbi-button-positive,.dd-wrap .cbi-button-add,.dd-wrap .cbi-button-edit{border-color:#4aa065 !important;color:#4aa065 !important}',
 	'.dd-wrap .cbi-button-remove{border-color:#d96d6d !important;color:#d96d6d !important}',
 	'.dd-wrap .cbi-button-remove:hover{background:rgba(217,109,109,.12) !important}',
-	'.dd-switch{position:relative;width:42px;height:22px;border:0;border-radius:999px;background:rgba(128,128,128,.28);padding:0;cursor:pointer;transition:background .18s ease,opacity .18s ease;flex-shrink:0}',
+	/* KuCAT styles every <button> with width:auto!important, min-height:2.2rem,
+	   line-height:2.2rem, margin-left, uppercase and a hover translateY — that
+	   inflates the 42x22 switch track into a vertical pill while the knob still
+	   slides sideways. Normalize box metrics on all in-app buttons. box-shadow
+	   is deliberately left to the theme: KuCAT's halo on the switch is wanted. */
+	'.dd-wrap button,.dd-log-wrap button{min-height:0!important;line-height:1.4!important;margin-left:0;text-transform:none;transform:none!important}',
+	'.dd-switch{position:relative;width:42px!important;height:22px!important;margin:0;padding:0;border:0!important;border-radius:999px;background:rgba(128,128,128,.28);cursor:pointer;transition:background .18s ease,opacity .18s ease;flex-shrink:0}',
 	'.dd-switch .dd-switch-knob{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:rgba(255,255,255,.96);box-shadow:0 1px 4px rgba(0,0,0,.2);transition:transform .18s ease}',
 	'.dd-switch.is-on{background:rgba(74,160,101,.65)}',
 	'.dd-switch.is-on .dd-switch-knob{transform:translateX(20px)}',
@@ -99,18 +108,25 @@ const CSS = [
 	'.dd-adv:not(.dd-closed) .dd-adv-chevron{transform:rotate(90deg)}',
 	'.dd-adv-body{margin-top:8px;padding:2px 4px 4px}',
 	'.dd-adv.dd-closed .dd-adv-body{display:none}',
-	'.dd-editor{width:100%;min-height:460px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;font-size:12px;line-height:1.5;box-sizing:border-box;resize:vertical;border-radius:6px 6px 0 0}',
+	/* display:block kills the ~5px inline-block baseline gap that made the
+	   overlay pre (inset:0) ~5px taller than the textarea — the two layers'
+	   scrollbars and glyphs would otherwise drift apart on mobile */
+	'.dd-editor{display:block;width:100%;min-height:460px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;font-size:12px;line-height:1.5;box-sizing:border-box;resize:vertical;border-radius:6px 6px 0 0}',
 	/* syntax-highlight overlay: a <pre> sits behind a transparent <textarea>.
 	   both share identical box metrics so glyphs line up; the textarea stays the
 	   real editor (caret, selection, insert-at-cursor, jump-to-line all native) */
 	'.dd-edit-wrap{position:relative}',
-	'.dd-edit-wrap .dd-editor,.dd-edit-wrap .dd-hl{margin:0;padding:10px 12px;border-width:1px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;font-size:12px;line-height:1.5;letter-spacing:0;tab-size:4;white-space:pre;word-break:normal;overflow-x:auto;box-sizing:border-box}',
-	'.dd-edit-wrap .dd-hl{position:absolute;inset:0;margin:0;overflow:hidden;border:1px solid transparent;border-radius:6px 6px 0 0;pointer-events:none;background:#f6f8fa;color:#3b4252;z-index:1}',
+	'.dd-edit-wrap .dd-editor,.dd-edit-wrap .dd-hl{margin:0;padding:10px 12px;border-width:1px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;font-size:12px;line-height:1.5;letter-spacing:0;tab-size:4;white-space:pre;word-break:normal;overflow:auto;box-sizing:border-box}',
+	/* resize:vertical renders the same corner grip as the textarea (pointer-events
+	   keeps it inert), so both layers' scrollbar tracks stay the same length on
+	   mobile — the textarea's resize grip otherwise shortens its track and the
+	   thumbs drift, ghosting the highlight underneath */
+	'.dd-edit-wrap .dd-hl{position:absolute;inset:0;margin:0;resize:vertical;border:1px solid transparent;border-radius:6px 6px 0 0;pointer-events:none;background:#f6f8fa;color:#3b4252;z-index:1}',
 	/* reset Argon's code{background:var(--lighter)} so the overlay inherits the
 	   pre background uniformly — otherwise a dark pre shows as side bars.
 	   color:inherit so plain text follows .dd-hl (light in dark mode) instead of
 	   the theme's own code{color}, which is dark and vanishes on a dark pre */
-	'.dd-edit-wrap .dd-hl code{font:inherit;white-space:inherit;word-break:inherit;display:block;color:inherit !important;background:transparent !important}',
+	'.dd-edit-wrap .dd-hl code{font:inherit;white-space:inherit;word-break:inherit;display:block;color:inherit !important;background:transparent !important;padding: 0px}',
 	'.dd-edit-wrap .dd-editor-hl{position:relative;z-index:2;color:transparent !important;background:transparent !important;caret-color:#2f7288;border:1px solid rgba(128,128,128,.28)}',
 	'.dd-edit-wrap .dd-editor-hl::placeholder{color:rgba(128,128,128,.55)}',
 	/* keep selected text transparent too — else the browser force-colors it and

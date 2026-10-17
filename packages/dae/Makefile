@@ -5,13 +5,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=dae
-PKG_VERSION:=2026.08.05
-PKG_RELEASE:=4
+PKG_VERSION:=2026.09.30
+PKG_RELEASE:=1
 
-PKG_SOURCE:=dae-src-2026.08.05-fc1a5bf558fd.tar.gz
+PKG_SOURCE:=dae-src-2026.09.30-30538527b146.tar.gz
 PKG_SOURCE_URL:=https://github.com/kenzok8/openwrt-daede/releases/download/dae-src
 PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)
-PKG_HASH:=fc1a5bf558fdc50c072fc048b2f78a3346f7f49fbe8c09644b8b2189f99e5300
+PKG_HASH:=30538527b146aeee3ee7f60dc12df17832b449631ac39bbabf90920f4999fe41
 
 PKG_LICENSE:=AGPL-3.0-only
 PKG_LICENSE_FILE:=LICENSE
@@ -39,7 +39,7 @@ GO_PKG_LDFLAGS:= \
 GO_PKG_LDFLAGS_X:= \
 	$(GO_PKG)/cmd.Version=$(PKG_VERSION) \
 	$(GO_PKG)/common/consts.MaxMatchSetLen_=1024
-GO_PKG_TAGS:=trace
+GO_PKG_TAGS:=trace,timetzdata
 
 include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/bpf.mk
